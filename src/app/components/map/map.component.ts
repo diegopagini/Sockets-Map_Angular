@@ -38,6 +38,10 @@ export class MapComponent implements OnInit {
 
   ngOnInit(): void {
     this.createMap();
+
+    for (const marker of this.places) {
+      this.addMarker(marker);
+    }
   }
 
   /**
@@ -52,5 +56,50 @@ export class MapComponent implements OnInit {
       zoom: 15.8, // starting zoom
       accessToken: environment.mapBoxToken,
     });
+  }
+
+  /**
+   * Método para agregar un marcador en el mapa.
+   * @param {Place} marker
+   */
+
+  addMarker(marker: Place): void {
+    const html = `<h2>${marker.name}</h2>
+                  <br>
+                  <button>Borrar</button>`;
+
+    const customPopup = new mapboxgl.Popup({
+      offset: 25,
+      closeOnClick: false,
+    }).setHTML(html);
+
+    const newMarker = new mapboxgl.Marker({
+      draggable: true,
+      color: marker.color,
+    })
+      .setLngLat([marker.lng, marker.lat])
+      .setPopup(customPopup)
+      .addTo(this.map);
+
+    newMarker.on('drag', () => {
+      const lngLat = newMarker.getLngLat();
+      console.log(lngLat);
+      // TODO: crear eveneto para emitir coordenadas.
+    });
+  }
+
+  /**
+   * Método para crear un nuevo marcador.
+   */
+
+  createMarker(): void {
+    const marker: Place = {
+      id: new Date().toISOString(),
+      lng: -75.75512993582937,
+      lat: 45.349977429009954,
+      name: 'No name',
+      color: `#${Math.floor(Math.random() * 16777215).toString(16)}`,
+    };
+    this.addMarker(marker);
   }
 }
