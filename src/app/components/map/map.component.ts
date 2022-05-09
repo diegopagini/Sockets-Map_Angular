@@ -1,6 +1,10 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnDestroy, OnInit } from '@angular/core';
 import { Place } from 'src/app/interfaces/place.interface';
 import { environment } from 'src/environments/environment';
+import { HttpClient } from '@angular/common/http';
+import { Marker } from 'src/app/interfaces/marker.interface';
+import { WebsocketService } from 'src/app/services/websocket.service';
+import { Subscription } from 'rxjs';
 import * as mapboxgl from 'mapbox-gl';
 
 @Component({
@@ -8,40 +12,54 @@ import * as mapboxgl from 'mapbox-gl';
   templateUrl: './map.component.html',
   styleUrls: ['./map.component.scss'],
 })
-export class MapComponent implements OnInit {
+export class MapComponent implements OnInit, OnDestroy {
   map: mapboxgl.Map;
-  places: Place[] = [
-    {
-      id: '1',
-      name: 'Fernando',
-      lng: -75.75512993582937,
-      lat: 45.349977429009954,
-      color: '#dd8fee',
-    },
-    {
-      id: '2',
-      name: 'Amy',
-      lng: -75.75195645527508,
-      lat: 45.351584045823756,
-      color: '#790af0',
-    },
-    {
-      id: '3',
-      name: 'Orlando',
-      lng: -75.75900589557777,
-      lat: 45.34794635758547,
-      color: '#19884b',
-    },
-  ];
+  places: Marker = {};
+  mapboxMarker: { [id: string]: mapboxgl.Marker } = {};
+  private addedSubscription: Subscription;
+  private deletedSubscription: Subscription;
+  private movedSubscription: Subscription;
 
-  constructor() {}
+  constructor(
+    private http: HttpClient,
+    private wsSocektService: WebsocketService
+  ) {}
 
   ngOnInit(): void {
-    this.createMap();
+    this.http
+      .get<Marker>(`${environment.wsUrl}/mapa`)
+      .subscribe((markers: Marker) => {
+        this.places = markers;
+        this.createMap();
+      });
 
-    for (const marker of this.places) {
-      this.addMarker(marker);
-    }
+    this.listenSockets();
+  }
+
+  /**
+   * Método para esuchar nuestros cambios en el sockets.
+   */
+
+  listenSockets(): void {
+    // marcador nuevo.
+    this.addedSubscription = this.wsSocektService
+      .listen('marker-added')
+      .subscribe((marker: Place) => this.addMarker(marker));
+
+    // marcador eliminado.
+    this.deletedSubscription = this.wsSocektService
+      .listen('marker-deleted')
+      .subscribe((id: string) => {
+        this.mapboxMarker[id].remove();
+        delete this.mapboxMarker[id];
+      });
+
+    // marcador relocalizado.
+    this.movedSubscription = this.wsSocektService
+      .listen('marker-moved')
+      .subscribe((marker: Place) => {
+        this.mapboxMarker[marker.id].setLngLat([marker.lng, marker.lat]);
+      });
   }
 
   /**
@@ -56,6 +74,14 @@ export class MapComponent implements OnInit {
       zoom: 15.8, // starting zoom
       accessToken: environment.mapBoxToken,
     });
+
+    /**
+     * Creamos nuestros marcadores del servidor en la vista.
+     * Desestructurando la respuesta de nuestros lugares.
+     */
+    for (const [id, marker] of Object.entries(this.places)) {
+      this.addMarker(marker);
+    }
   }
 
   /**
@@ -65,11 +91,11 @@ export class MapComponent implements OnInit {
 
   addMarker(marker: Place): void {
     const h2 = (document.createElement('h2').innerText = marker.name);
-    const breakLine = document.createElement('br');
-    const btnDelete = document.createElement('button');
-    btnDelete.innerText = 'Borrar';
+    const br = document.createElement('br');
+    const buttonDelete = document.createElement('button');
+    buttonDelete.innerText = 'Borrar';
     const div = document.createElement('div');
-    div.append(h2, breakLine, btnDelete);
+    div.append(h2, br, buttonDelete);
 
     const customPopup = new mapboxgl.Popup({
       offset: 25,
@@ -86,14 +112,20 @@ export class MapComponent implements OnInit {
 
     newMarker.on('drag', () => {
       const lngLat = newMarker.getLngLat();
-      console.log(lngLat);
-      // TODO: crear eveneto para emitir coordenadas.
+      const markerMoved = {
+        ...marker,
+        lngLat,
+      };
+
+      this.wsSocektService.emit('move-marker', markerMoved);
     });
 
-    btnDelete.addEventListener('click', () => {
+    buttonDelete.addEventListener('click', () => {
       newMarker.remove();
-      // TODO: delete remove by socket
+      this.wsSocektService.emit('delete-marker', marker.id);
     });
+
+    this.mapboxMarker[marker.id] = marker as any;
   }
 
   /**
@@ -109,12 +141,15 @@ export class MapComponent implements OnInit {
       color: `#${Math.floor(Math.random() * 16777215).toString(16)}`,
     };
     this.addMarker(marker);
+    /**
+     * Emitimos nuestro marcador por socket.
+     */
+    this.wsSocektService.emit('new-marker', marker);
   }
 
-  /**
-   * Método para eliminar un marcador.
-   * @param {Place} marker
-   */
-
-  deleteMarker(marker: Place): void {}
+  ngOnDestroy(): void {
+    this.addedSubscription?.unsubscribe();
+    this.deletedSubscription?.unsubscribe();
+    this.movedSubscription?.unsubscribe();
+  }
 }
