@@ -64,14 +64,17 @@ export class MapComponent implements OnInit {
    */
 
   addMarker(marker: Place): void {
-    const html = `<h2>${marker.name}</h2>
-                  <br>
-                  <button>Borrar</button>`;
+    const h2 = (document.createElement('h2').innerText = marker.name);
+    const breakLine = document.createElement('br');
+    const btnDelete = document.createElement('button');
+    btnDelete.innerText = 'Borrar';
+    const div = document.createElement('div');
+    div.append(h2, breakLine, btnDelete);
 
     const customPopup = new mapboxgl.Popup({
       offset: 25,
       closeOnClick: false,
-    }).setHTML(html);
+    }).setDOMContent(div);
 
     const newMarker = new mapboxgl.Marker({
       draggable: true,
@@ -85,6 +88,11 @@ export class MapComponent implements OnInit {
       const lngLat = newMarker.getLngLat();
       console.log(lngLat);
       // TODO: crear eveneto para emitir coordenadas.
+    });
+
+    btnDelete.addEventListener('click', () => {
+      newMarker.remove();
+      // TODO: delete remove by socket
     });
   }
 
@@ -102,4 +110,11 @@ export class MapComponent implements OnInit {
     };
     this.addMarker(marker);
   }
+
+  /**
+   * Método para eliminar un marcador.
+   * @param {Place} marker
+   */
+
+  deleteMarker(marker: Place): void {}
 }
